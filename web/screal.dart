@@ -29,6 +29,8 @@ class Screal {
       canvas.style.height = "${720/pixelRatio}px";
     }
     context = canvas.getContext("2d");
+    canvas.onMouseDown.listen((_) => jumping = true);
+    canvas.onMouseUp.listen((_) => jumping = false);
   }
 
   void start() {
@@ -51,7 +53,7 @@ class Screal {
 
     context.save();
     transformToLocal(body);
-    context.fillStyle = "#08c";
+    context.fillStyle = bodyOnGround ? "#08c" : "#080";
     context.fillRect(-1, -1, 2, 2);
     context.restore();
 
@@ -62,12 +64,40 @@ class Screal {
     context.restore();
 
     context.restore();
-    
-    world.stepDt(1.0/60.0, 10, 10);
+
+    stepWorld();
     window.requestAnimationFrame(render);
   }
 
+  void stepWorld() {
+    ContactEdge edge = body.getContactList();
+    Vector2 connectionPoints = new Vector2.zero();
+    int connectionPointCount = 0;
+    for(; edge != null; edge = edge.next) {
+      Contact contact = edge.contact;
+      WorldManifold manifold = new WorldManifold();
+      contact.getWorldManifold(manifold);
+      if(manifold.normal.y > -0.5)
+        continue;
+      for(Vector2 point in manifold.points) {
+        connectionPoints.add(point);
+        ++connectionPointCount;
+      }
+    }
+    bodyOnGround = connectionPointCount > 0;
+    if(jumping && bodyOnGround) {
+      connectionPoints.scale(1.0/connectionPointCount);
+      Vector2 at = connectionPoints;
+      Vector2 dir = new Vector2(0.0, -100.0);
+      body.applyForce(dir, at);
+      print("Jump");
+    }
+    world.stepDt(1.0/60.0, 10, 10);
+  }
+
   final World world;
+  bool bodyOnGround = false;
+  bool jumping = false;
   Body body;
   Body ground;
   CanvasElement canvas;
