@@ -1,9 +1,22 @@
 import "package:box2d/box2d.dart";
 import "dart:html" hide Body;
+import "dart:web_audio";
+import "dart:typed_data";
+import "dart:math" as math;
 
 class Screal {
-  Screal():
-    world = new World.withGravity(new Vector2(0.0, 10.0)) {
+  Screal()
+      : world = new World.withGravity(new Vector2(0.0, 10.0)),
+        audio = new AudioContext() {
+    _landingNoise = audio.createBuffer(1, 4410, 44100);
+    Float32List samples = new Float32List(4410);
+    for (int i = 0; i < samples.length; ++i) {
+      samples[i] = math.sin(i / 512.0 * math.PI) *
+          8 *
+          math.min(1.0, i * 8 / samples.length) *
+          math.min(1.0, 1 - i / samples.length);
+    }
+    _landingNoise.copyToChannel(samples, 0);
     BodyDef bd = new BodyDef();
     PolygonShape poly = new PolygonShape();
     poly.setAsBoxXY(16.0, 1.0);
@@ -24,7 +37,7 @@ class Screal {
     body.createFixtureFromFixtureDef(activeFixtureDef);
     canvas = new CanvasElement(width: 1280, height: 720);
     num pixelRatio = window.devicePixelRatio;
-    if(pixelRatio != 1) {
+    if (pixelRatio != 1) {
       canvas.style.width = "${1280/pixelRatio}px";
       canvas.style.height = "${720/pixelRatio}px";
     }
@@ -73,29 +86,37 @@ class Screal {
     ContactEdge edge = body.getContactList();
     Vector2 connectionPoints = new Vector2.zero();
     int connectionPointCount = 0;
-    for(; edge != null; edge = edge.next) {
+    for (; edge != null; edge = edge.next) {
       Contact contact = edge.contact;
       WorldManifold manifold = new WorldManifold();
       contact.getWorldManifold(manifold);
-      if(manifold.normal.y > -0.5)
-        continue;
-      for(Vector2 point in manifold.points) {
+      if (manifold.normal.y > -0.5) continue;
+      for (Vector2 point in manifold.points) {
         connectionPoints.add(point);
         ++connectionPointCount;
       }
     }
+    bool lastBodyOnGround = bodyOnGround;
     bodyOnGround = connectionPointCount > 0;
-    if(jumping && bodyOnGround) {
-      connectionPoints.scale(1.0/connectionPointCount);
+    if (jumping && bodyOnGround) {
+      connectionPoints.scale(1.0 / connectionPointCount);
       Vector2 at = connectionPoints;
       Vector2 dir = new Vector2(0.0, -100.0);
       body.applyForce(dir, at);
       print("Jump");
     }
-    world.stepDt(1.0/60.0, 10, 10);
+    world.stepDt(1.0 / 60.0, 10, 10);
+    if (!lastBodyOnGround && bodyOnGround) {
+      AudioBufferSourceNode landingNoise = audio.createBufferSource();
+      landingNoise.buffer = _landingNoise;
+      landingNoise.connectNode(audio.destination);
+      landingNoise.start(audio.currentTime);
+    }
   }
 
   final World world;
+  final AudioContext audio;
+  AudioBuffer _landingNoise;
   bool bodyOnGround = false;
   bool jumping = false;
   Body body;
